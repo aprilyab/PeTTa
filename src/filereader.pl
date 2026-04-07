@@ -14,8 +14,25 @@ process_metta_string(S, Results, Space) :- string_codes(S, Cs),
                                            strip(Cs, 0, Codes),
                                            phrase(top_forms(Forms, 1), Codes),
                                            maplist(parse_form, Forms, ParsedForms),
-                                           maplist(process_form(Space), ParsedForms, ResultsList), !,
-                                           append(ResultsList, Results).
+                                           split_imports(ParsedForms, ImportForms, OtherForms),
+                                           maplist(process_form(Space), ImportForms, ImportResultsList),
+                                           maplist(process_form(Space), OtherForms, OtherResultsList), !,
+                                           append(ImportResultsList, ImportResults),
+                                           append(OtherResultsList, OtherResults),
+                                           append(ImportResults, OtherResults, Results).
+
+%Split parsed forms into import runnables (processed first) and other forms,
+%so that import order does not matter (all imports are resolved before compilation):
+split_imports([], [], []).
+split_imports([F|Fs], [F|Is], Os) :- is_import_form(F), !, split_imports(Fs, Is, Os).
+split_imports([F|Fs], Is, [F|Os]) :- split_imports(Fs, Is, Os).
+
+%Identify import forms to be processed before other forms:
+is_import_form(parsed(runnable, _, [F|_])) :- import_builtin(F).
+import_builtin('import!').
+import_builtin('static-import!').
+import_builtin('git-import!').
+import_builtin('use-module!').
 
 %First pass to convert MeTTa to Prolog Terms and register functions:
 parse_form(form(S), parsed(T, S, Term)) :- sread(S, Term),
