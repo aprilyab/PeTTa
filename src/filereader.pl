@@ -15,6 +15,7 @@ process_metta_string(S, Results, Space) :- string_codes(S, Cs),
                                            phrase(top_forms(Forms, 1), Codes),
                                            maplist(parse_form, Forms, ParsedForms),
                                            split_imports(ParsedForms, ImportForms, OtherForms),
+                                           pre_register_imports(ImportForms),
                                            maplist(process_form(Space), ImportForms, ImportResultsList),
                                            maplist(process_form(Space), OtherForms, OtherResultsList), !,
                                            append(ImportResultsList, ImportResults),
@@ -33,6 +34,29 @@ import_builtin('import!').
 import_builtin('static-import!').
 import_builtin('git-import!').
 import_builtin('use-module!').
+
+%Pre-register functions from all import targets before compilation,
+%so that cross-file forward references are resolved correctly:
+pre_register_imports([]).
+pre_register_imports([parsed(runnable, _, ['import!', _, File])|Rest]) :- !,
+    catch(pre_register_from_file(File), _, true),
+    pre_register_imports(Rest).
+pre_register_imports([_|Rest]) :- pre_register_imports(Rest).
+
+%Parse an imported file to register its function names and arities without compiling:
+pre_register_from_file(File) :-
+    atom(File),
+    atom_string(File, SFile),
+    working_dir(Base),
+    \+ file_name_extension(_, 'py', SFile),
+    ( Path = SFile ; atomic_list_concat([Base, '/', SFile], Path) ),
+    ensure_metta_ext(Path, PathWithExt),
+    exists_file(PathWithExt), !,
+    read_file_to_string(PathWithExt, S, []),
+    string_codes(S, Cs),
+    strip(Cs, 0, Codes),
+    phrase(top_forms(Forms, 1), Codes),
+    maplist(parse_form, Forms, _).
 
 %First pass to convert MeTTa to Prolog Terms and register functions:
 parse_form(form(S), parsed(T, S, Term)) :- sread(S, Term),
